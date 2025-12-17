@@ -77,7 +77,24 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+    <script src="https://unpkg.com/split.js/dist/split.min.js"></script>
     <script src="_framework/blazor.webassembly.js"></script>
+    <script>
+        window.initializeSplit = function() {
+            var treePanel = document.querySelector('.tree-panel');
+            var detailsPanel = document.querySelector('.details-panel');
+            if (treePanel && detailsPanel && !treePanel.dataset.splitInitialized) {
+                Split(['.tree-panel', '.details-panel'], {
+                    sizes: [35, 65],
+                    minSize: [250, 300],
+                    gutterSize: 6,
+                    cursor: 'col-resize',
+                    direction: 'horizontal'
+                });
+                treePanel.dataset.splitInitialized = 'true';
+            }
+        };
+    </script>
 </body>
 
 </html>

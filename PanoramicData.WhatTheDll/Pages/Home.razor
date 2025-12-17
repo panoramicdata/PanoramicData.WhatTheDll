@@ -442,6 +442,7 @@ else
     private string pdbFileName = "";
     private string? pdbError;
     private InputFile? pdbInputFile;
+    private bool splitInitialized = false;
 
     // Tree state
     private HashSet<string> expandedNodes = new();
@@ -463,6 +464,20 @@ else
             catch
             {
                 // Element might not be ready yet
+            }
+        }
+        
+        // Initialize Split.js when assembly is loaded
+        if (assemblyInfo != null && !splitInitialized)
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("initializeSplit");
+                splitInitialized = true;
+            }
+            catch
+            {
+                // Split.js might not be ready yet
             }
         }
     }

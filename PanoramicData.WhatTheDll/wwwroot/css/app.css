@@ -348,14 +348,32 @@ code {
 
 /* Tree Panel */
 .tree-panel {
-    width: 320px;
     min-width: 250px;
-    max-width: 450px;
-    border-right: 1px solid var(--app-border);
+    border-right: none;
     display: flex;
     flex-direction: column;
     background-color: var(--app-bg);
     overflow: hidden;
+}
+
+/* Split.js gutter */
+.gutter {
+    background-color: var(--app-border);
+    background-repeat: no-repeat;
+    background-position: 50%;
+    transition: background-color 0.2s ease;
+}
+
+.gutter:hover {
+    background-color: var(--drop-zone-hover-border);
+}
+
+.gutter.gutter-horizontal {
+    cursor: col-resize;
+}
+
+.gutter.gutter-horizontal:hover {
+    background-color: #0d6efd;
 }
 
 .tree-header {
@@ -716,4 +734,74 @@ code {
 
 [data-bs-theme="dark"] .method-params {
     color: #6c757d;
+}
+
+/* Dark mode scrollbars */
+[data-bs-theme="dark"] ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-track {
+    background: #1e1e1e;
+    border-radius: 5px;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 5px;
+    border: 2px solid #1e1e1e;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+[data-bs-theme="dark"] ::-webkit-scrollbar-corner {
+    background: #1e1e1e;
+}
+
+/* Firefox scrollbar for dark mode */
+[data-bs-theme="dark"] * {
+    scrollbar-width: thin;
+    scrollbar-color: #444 #1e1e1e;
+}
+
+/* Dark mode search box */
+[data-bs-theme="dark"] .tree-header .form-control {
+    background-color: #2d2d2d;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+[data-bs-theme="dark"] .tree-header .form-control::placeholder {
+    color: #888;
+}
+
+[data-bs-theme="dark"] .tree-header .form-control:focus {
+    background-color: #333;
+    border-color: #0d6efd;
+    color: #fff;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+/* Light mode scrollbars (subtle) */
+[data-bs-theme="light"] ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+[data-bs-theme="light"] ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+[data-bs-theme="light"] ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 5px;
+    border: 2px solid #f1f1f1;
+}
+
+[data-bs-theme="light"] ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
 }
