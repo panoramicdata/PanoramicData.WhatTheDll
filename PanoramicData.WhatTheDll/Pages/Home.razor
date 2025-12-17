@@ -312,10 +312,20 @@ else
                             </h5>
                             <div class="type-badges">
                                 @if (selectedType.IsPublic) { <span class="badge bg-secondary">Public</span> }
-                                @if (selectedType.IsClass) { <span class="badge bg-success">Class</span> }
+                                @if (selectedType.IsEnum) 
+                                { 
+                                    <span class="badge bg-enum">Enum</span>
+                                    @if (selectedType.IsFlags) { <span class="badge bg-flags">Flags</span> }
+                                    @if (!string.IsNullOrEmpty(selectedType.UnderlyingType)) 
+                                    { 
+                                        <span class="badge bg-type">@selectedType.UnderlyingType</span>
+                                    }
+                                }
+                                else if (selectedType.IsStruct) { <span class="badge bg-struct">Struct</span> }
+                                else if (selectedType.IsClass) { <span class="badge bg-success">Class</span> }
                                 @if (selectedType.IsInterface) { <span class="badge bg-info">Interface</span> }
                                 @if (selectedType.IsAbstract && !selectedType.IsInterface) { <span class="badge bg-warning">Abstract</span> }
-                                @if (selectedType.IsSealed) { <span class="badge bg-dark">Sealed</span> }
+                                @if (selectedType.IsSealed && !selectedType.IsEnum && !selectedType.IsStruct) { <span class="badge bg-dark">Sealed</span> }
                             </div>
                             @if (!string.IsNullOrEmpty(selectedType.SourceFile))
                             {
@@ -350,6 +360,32 @@ else
                                         </li>
                                     }
                                 </ul>
+                            </div>
+                        }
+
+                        @if (selectedType.IsEnum && selectedType.EnumMembers.Any())
+                        {
+                            <div class="details-section">
+                                <h6>Members (@selectedType.EnumMembers.Count)</h6>
+                                <table class="enum-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Name</th>
+                                            <th>Value</th>
+                                            @if (selectedType.IsFlags) { <th>Hex</th> }
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var member in selectedType.EnumMembers)
+                                        {
+                                            <tr>
+                                                <td class="enum-member-name">@member.Name</td>
+                                                <td class="enum-member-value">@member.Value</td>
+                                                @if (selectedType.IsFlags) { <td class="enum-member-hex">@member.HexValue</td> }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
                             </div>
                         }
 
@@ -681,6 +717,8 @@ else
 
     private string GetTypeIcon(TypeInfo type)
     {
+        if (type.IsEnum) return "🟡";
+        if (type.IsStruct) return "🟩";
         if (type.IsInterface) return "🔷";
         if (type.IsAbstract) return "🔶";
         if (type.IsSealed) return "🔒";

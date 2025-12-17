@@ -477,6 +477,59 @@ code {
     gap: 0.25rem;
 }
 
+.type-badges .badge.bg-enum {
+    background-color: #9333ea !important;
+}
+
+.type-badges .badge.bg-struct {
+    background-color: #059669 !important;
+}
+
+.type-badges .badge.bg-flags {
+    background-color: #d97706 !important;
+}
+
+.type-badges .badge.bg-type {
+    background-color: #6366f1 !important;
+}
+
+.enum-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 0.85rem;
+}
+
+.enum-table th,
+.enum-table td {
+    padding: 0.35rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--app-border);
+}
+
+.enum-table th {
+    font-weight: 600;
+    color: var(--type-border);
+    background-color: var(--drop-zone-bg);
+}
+
+.enum-table tr:hover td {
+    background-color: var(--drop-zone-hover-bg);
+}
+
+.enum-member-name {
+    color: #9333ea;
+}
+
+.enum-member-value {
+    color: var(--code-color);
+}
+
+.enum-member-hex {
+    color: #6366f1;
+    font-style: italic;
+}
+
 .details-section {
     margin-bottom: 1.5rem;
 }

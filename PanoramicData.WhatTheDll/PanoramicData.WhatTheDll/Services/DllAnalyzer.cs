@@ -76,21 +76,54 @@ public class DllAnalyzer
                     continue;
 
                 var fullName = string.IsNullOrEmpty(namespaceName) ? typeName : $"{namespaceName}.{typeName}";
+                
+                // Check if it's an enum by looking at the base type
+                var isEnum = false;
+                var isStruct = false;
+                var baseTypeHandle = typeDef.BaseType;
+                if (!baseTypeHandle.IsNil)
+                {
+                    string? baseTypeName = null;
+                    if (baseTypeHandle.Kind == HandleKind.TypeReference)
+                    {
+                        var baseTypeRef = metadataReader.GetTypeReference((TypeReferenceHandle)baseTypeHandle);
+                        baseTypeName = metadataReader.GetString(baseTypeRef.Name);
+                    }
+                    else if (baseTypeHandle.Kind == HandleKind.TypeDefinition)
+                    {
+                        var baseTypeDef = metadataReader.GetTypeDefinition((TypeDefinitionHandle)baseTypeHandle);
+                        baseTypeName = metadataReader.GetString(baseTypeDef.Name);
+                    }
+                    
+                    isEnum = baseTypeName == "Enum";
+                    isStruct = baseTypeName == "ValueType" && !isEnum;
+                }
+                
                 var typeInfo = new TypeInfo
                 {
                     Name = typeName,
                     Namespace = namespaceName,
                     FullName = fullName,
                     IsPublic = (typeDef.Attributes & TypeAttributes.Public) == TypeAttributes.Public,
-                    IsClass = (typeDef.Attributes & TypeAttributes.Interface) != TypeAttributes.Interface &&
+                    IsClass = !isEnum && !isStruct && 
+                              (typeDef.Attributes & TypeAttributes.Interface) != TypeAttributes.Interface &&
                               (typeDef.Attributes & TypeAttributes.Class) == TypeAttributes.Class,
                     IsInterface = (typeDef.Attributes & TypeAttributes.Interface) == TypeAttributes.Interface,
                     IsAbstract = (typeDef.Attributes & TypeAttributes.Abstract) == TypeAttributes.Abstract,
                     IsSealed = (typeDef.Attributes & TypeAttributes.Sealed) == TypeAttributes.Sealed,
+                    IsEnum = isEnum,
+                    IsStruct = isStruct,
                     MethodToken = typeDef.GetMethods().FirstOrDefault().IsNil ? 0 : MetadataTokens.GetToken(typeDef.GetMethods().First())
                 };
-
-                // Build a dictionary of property accessors to exclude from methods
+                
+                // If it's an enum, extract enum-specific information
+                if (isEnum)
+                {
+                    ExtractEnumInfo(metadataReader, typeDef, typeInfo);
+                }
+                else
+                {
+                    // Only extract properties and methods for non-enum types
                 var propertyAccessors = new HashSet<MethodDefinitionHandle>();
                 var propertyInfos = new Dictionary<string, PropertyInfo>();
 
@@ -169,6 +202,7 @@ public class DllAnalyzer
 
                     typeInfo.Methods.Add(methodInfo);
                 }
+                } // end else (non-enum types)
 
                 info.Types.Add(typeInfo);
             }
@@ -236,6 +270,93 @@ public class DllAnalyzer
             // Ignore signature decoding errors
         }
         return result;
+    }
+    
+    private void ExtractEnumInfo(MetadataReader reader, TypeDefinition typeDef, TypeInfo typeInfo)
+    {
+        // Check for [Flags] attribute
+        foreach (var attrHandle in typeDef.GetCustomAttributes())
+        {
+            var attr = reader.GetCustomAttribute(attrHandle);
+            var ctorHandle = attr.Constructor;
+            
+            string? attrTypeName = null;
+            if (ctorHandle.Kind == HandleKind.MemberReference)
+            {
+                var memberRef = reader.GetMemberReference((MemberReferenceHandle)ctorHandle);
+                if (memberRef.Parent.Kind == HandleKind.TypeReference)
+                {
+                    var typeRef = reader.GetTypeReference((TypeReferenceHandle)memberRef.Parent);
+                    attrTypeName = reader.GetString(typeRef.Name);
+                }
+            }
+            
+            if (attrTypeName == "FlagsAttribute")
+            {
+                typeInfo.IsFlags = true;
+                break;
+            }
+        }
+        
+        // Extract enum fields (members)
+        foreach (var fieldHandle in typeDef.GetFields())
+        {
+            var field = reader.GetFieldDefinition(fieldHandle);
+            var fieldName = reader.GetString(field.Name);
+            
+            // Skip the special "value__" field which holds the underlying type
+            if (fieldName == "value__")
+            {
+                // Get underlying type from this field
+                try
+                {
+                    var signature = field.DecodeSignature(new TypeNameProvider(reader), null);
+                    typeInfo.UnderlyingType = signature;
+                }
+                catch
+                {
+                    typeInfo.UnderlyingType = "int";
+                }
+                continue;
+            }
+            
+            // Only include static literal fields (the actual enum values)
+            if ((field.Attributes & FieldAttributes.Static) == 0 ||
+                (field.Attributes & FieldAttributes.Literal) == 0)
+                continue;
+            
+            // Get the constant value
+            long value = 0;
+            var constantHandle = field.GetDefaultValue();
+            if (!constantHandle.IsNil)
+            {
+                var constant = reader.GetConstant(constantHandle);
+                var blob = reader.GetBlobReader(constant.Value);
+                
+                value = constant.TypeCode switch
+                {
+                    ConstantTypeCode.SByte => blob.ReadSByte(),
+                    ConstantTypeCode.Byte => blob.ReadByte(),
+                    ConstantTypeCode.Int16 => blob.ReadInt16(),
+                    ConstantTypeCode.UInt16 => blob.ReadUInt16(),
+                    ConstantTypeCode.Int32 => blob.ReadInt32(),
+                    ConstantTypeCode.UInt32 => blob.ReadUInt32(),
+                    ConstantTypeCode.Int64 => blob.ReadInt64(),
+                    ConstantTypeCode.UInt64 => (long)blob.ReadUInt64(),
+                    _ => 0
+                };
+            }
+            
+            typeInfo.EnumMembers.Add(new EnumMemberInfo
+            {
+                Name = fieldName,
+                Value = value,
+                HexValue = typeInfo.IsFlags ? $"0x{value:X}" : null
+            });
+        }
+        
+        // Sort by value
+        typeInfo.EnumMembers = typeInfo.EnumMembers.OrderBy(m => m.Value).ToList();
     }
     
     private void ExtractCustomAttributes(MetadataReader metadataReader, AssemblyInfo info)
@@ -476,10 +597,22 @@ public class TypeInfo
     public bool IsInterface { get; set; }
     public bool IsAbstract { get; set; }
     public bool IsSealed { get; set; }
+    public bool IsEnum { get; set; }
+    public bool IsStruct { get; set; }
+    public bool IsFlags { get; set; }
+    public string? UnderlyingType { get; set; }
+    public List<EnumMemberInfo> EnumMembers { get; set; } = new();
     public List<MethodInfo> Methods { get; set; } = new();
     public List<PropertyInfo> Properties { get; set; } = new();
     public string? SourceFile { get; set; }
     public int MethodToken { get; set; }
+}
+
+public class EnumMemberInfo
+{
+    public string Name { get; set; } = "";
+    public long Value { get; set; }
+    public string? HexValue { get; set; }
 }
 
 public class PropertyInfo
