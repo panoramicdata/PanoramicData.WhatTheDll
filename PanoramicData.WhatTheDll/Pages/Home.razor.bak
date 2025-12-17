@@ -1,0 +1,189 @@
+﻿@page "/"
+@using PanoramicData.WhatTheDll.Services
+@inject DllAnalyzer Analyzer
+
+<PageTitle>What The DLL?</PageTitle>
+
+<div class="container-fluid vh-100 d-flex flex-column p-4">
+    @if (assemblyInfo == null)
+    {
+        <div class="drop-zone @dragClass" 
+             @ondrop="HandleDrop" 
+             @ondragenter="HandleDragEnter" 
+             @ondragleave="HandleDragLeave"
+             @ondragover:preventDefault>
+            <div class="drop-zone-content">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-file-earmark-binary mb-3" viewBox="0 0 16 16">
+                    <path d="M7.05 11.885c0 1.415-.548 2.206-1.524 2.206C4.548 14.09 4 13.3 4 11.885c0-1.412.548-2.203 1.526-2.203.976 0 1.524.79 1.524 2.203m-1.524-1.612c-.542 0-.832.563-.832 1.612 0 1.04.29 1.612.832 1.612.358 0 .832-.36.832-1.612 0-1.248-.274-1.612-.832-1.612m4.557 2.206c0 .685-.07 1.617-1.044 1.617-.509 0-.872-.274-.872-.685 0-.685.07-1.617 1.044-1.617.509 0 .872.274.872.685M8.72 9.098c.83 0 1.852.685 1.852 2.787 0 1.83-.826 2.205-1.852 2.205s-1.852-.375-1.852-2.205c0-2.102 1.022-2.787 1.852-2.787"/>
+                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/>
+                </svg>
+                <h3 class="mb-2">Drop a .NET DLL file here</h3>
+                <p class="text-muted">Drag and drop anywhere on this page to analyze the assembly</p>
+            </div>
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(assemblyInfo.Error))
+    {
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">Error</h4>
+            <p>@assemblyInfo.Error</p>
+            <button class="btn btn-primary mt-2" @onclick="Reset">Analyze Another DLL</button>
+        </div>
+    }
+    else
+    {
+        <div class="analysis-result">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0">@assemblyInfo.Name</h2>
+                <button class="btn btn-primary" @onclick="Reset">Analyze Another DLL</button>
+            </div>
+
+            <div class="card mb-3">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Assembly Information</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Name:</strong> @assemblyInfo.Name</p>
+                    <p><strong>Version:</strong> @assemblyInfo.Version</p>
+                    <p><strong>Culture:</strong> @(string.IsNullOrEmpty(assemblyInfo.Culture) ? "neutral" : assemblyInfo.Culture)</p>
+                    <p><strong>Total Types:</strong> @assemblyInfo.Types.Count</p>
+                </div>
+            </div>
+
+            @if (assemblyInfo.References.Any())
+            {
+                <div class="card mb-3">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">References (@assemblyInfo.References.Count)</h5>
+                    </div>
+                    <div class="card-body">
+                        <ul class="list-unstyled mb-0">
+                            @foreach (var reference in assemblyInfo.References)
+                            {
+                                <li class="mb-1">@reference</li>
+                            }
+                        </ul>
+                    </div>
+                </div>
+            }
+
+            @if (assemblyInfo.Types.Any())
+            {
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Types (@assemblyInfo.Types.Count)</h5>
+                    </div>
+                    <div class="card-body">
+                        @foreach (var type in assemblyInfo.Types.OrderBy(t => t.Namespace).ThenBy(t => t.Name))
+                        {
+                            <div class="type-container mb-4">
+                                <h6 class="text-primary">
+                                    @if (type.IsInterface)
+                                    {
+                                        <span class="badge bg-info me-2">Interface</span>
+                                    }
+                                    else if (type.IsClass)
+                                    {
+                                        <span class="badge bg-success me-2">Class</span>
+                                    }
+                                    @if (type.IsPublic)
+                                    {
+                                        <span class="badge bg-secondary me-2">Public</span>
+                                    }
+                                    @if (type.IsAbstract && !type.IsInterface)
+                                    {
+                                        <span class="badge bg-warning me-2">Abstract</span>
+                                    }
+                                    @if (type.IsSealed)
+                                    {
+                                        <span class="badge bg-dark me-2">Sealed</span>
+                                    }
+                                    @type.FullName
+                                </h6>
+
+                                @if (type.Properties.Any())
+                                {
+                                    <div class="ms-3 mb-2">
+                                        <strong>Properties (@type.Properties.Count):</strong>
+                                        <ul class="list-unstyled ms-3">
+                                            @foreach (var prop in type.Properties)
+                                            {
+                                                <li><small>@prop</small></li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+
+                                @if (type.Methods.Any())
+                                {
+                                    <div class="ms-3">
+                                        <strong>Methods (@type.Methods.Count):</strong>
+                                        <ul class="list-unstyled ms-3">
+                                            @foreach (var method in type.Methods)
+                                            {
+                                                <li>
+                                                    <small>
+                                                        @if (method.IsPublic) { <span class="text-success">public</span> }
+                                                        @if (method.IsStatic) { <span>static</span> }
+                                                        @if (method.IsAbstract) { <span>abstract</span> }
+                                                        @if (method.IsVirtual && !method.IsAbstract) { <span>virtual</span> }
+                                                        @method.Name
+                                                    </small>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private AssemblyInfo? assemblyInfo;
+    private string dragClass = "";
+
+    private void HandleDragEnter()
+    {
+        dragClass = "drag-over";
+    }
+
+    private void HandleDragLeave()
+    {
+        dragClass = "";
+    }
+
+    private async Task HandleDrop(DragEventArgs e)
+    {
+        dragClass = "";
+        
+        if (e.DataTransfer?.Files.Length > 0)
+        {
+            var browserFile = e.DataTransfer.Files[0];
+            
+            if (browserFile.Name.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) || 
+                browserFile.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            {
+                using var stream = browserFile.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                using var memoryStream = new MemoryStream();
+                await stream.CopyToAsync(memoryStream);
+                var buffer = memoryStream.ToArray();
+                
+                assemblyInfo = Analyzer.AnalyzeAssembly(buffer);
+            }
+            else
+            {
+                assemblyInfo = new AssemblyInfo { Error = "Please drop a .dll or .exe file" };
+            }
+        }
+    }
+
+    private void Reset()
+    {
+        assemblyInfo = null;
+    }
+}

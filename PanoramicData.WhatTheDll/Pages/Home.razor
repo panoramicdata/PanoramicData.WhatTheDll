@@ -1,0 +1,779 @@
+@page "/"
+@using System.IO
+@using PanoramicData.WhatTheDll.Services
+@using Microsoft.AspNetCore.Components.Forms
+@inject DllAnalyzer Analyzer
+@inject IJSRuntime JS
+
+<PageTitle>What The DLL?</PageTitle>
+
+@if (assemblyInfo == null)
+{
+    <div class="container-fluid vh-100 d-flex flex-column p-4">
+        <div @ref="dropZoneElement" class="drop-zone @dragClass"
+             @ondragenter="HandleDragEnter"
+             @ondragenter:preventDefault
+             @ondragleave="HandleDragLeave"
+             @ondragover="HandleDragOver"
+             @ondragover:preventDefault
+             @onclick="TriggerFileInput">
+            <InputFile @ref="inputFile" id="fileInput" OnChange="HandleFileSelected" accept=".dll,.exe,.pdb,.snupkg" style="display:none;" multiple />
+            <div class="drop-zone-content">
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" fill="currentColor" class="bi bi-file-earmark-binary mb-3" viewBox="0 0 16 16">
+                    <path d="M7.05 11.885c0 1.415-.548 2.206-1.524 2.206C4.548 14.09 4 13.3 4 11.885c0-1.412.548-2.203 1.526-2.203.976 0 1.524.79 1.524 2.203m-1.524-1.612c-.542 0-.832.563-.832 1.612 0 1.04.29 1.612.832 1.612.358 0 .832-.36.832-1.612 0-1.248-.274-1.612-.832-1.612m4.557 2.206c0 .685-.07 1.617-1.044 1.617-.509 0-.872-.274-.872-.685 0-.685.07-1.617 1.044-1.617.509 0 .872.274.872.685M8.72 9.098c.83 0 1.852.685 1.852 2.787 0 1.83-.826 2.205-1.852 2.205s-1.852-.375-1.852-2.205c0-2.102 1.022-2.787 1.852-2.787"/>
+                    <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/>
+                </svg>
+                <h3 class="mb-2">Drop a .NET assembly here or click to browse</h3>
+                <p class="text-muted">Supports .dll, .exe files. You can also drop .pdb or .snupkg symbol files.</p>
+            </div>
+        </div>
+    </div>
+}
+else if (!string.IsNullOrEmpty(assemblyInfo.Error))
+{
+    <div class="container-fluid p-4">
+        <div class="alert alert-danger" role="alert">
+            <h4 class="alert-heading">Error</h4>
+            <p>@assemblyInfo.Error</p>
+            <button class="btn btn-primary mt-2" @onclick="Reset">Analyze Another DLL</button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="assembly-viewer">
+        <!-- Compact Header -->
+        <div class="assembly-header">
+            <div class="header-info">
+                <div class="header-title-row">
+                    <h4 class="mb-0 assembly-name">@assemblyInfo.Name</h4>
+                    @if (!string.IsNullOrEmpty(assemblyInfo.Product) && assemblyInfo.Product != assemblyInfo.Name)
+                    {
+                        <span class="product-name">(@assemblyInfo.Product)</span>
+                    }
+                    @if (assemblyInfo.IsDebug)
+                    {
+                        <span class="badge bg-warning text-dark ms-2">Debug</span>
+                    }
+                </div>
+                @if (!string.IsNullOrEmpty(assemblyInfo.Description))
+                {
+                    <div class="header-description">@assemblyInfo.Description</div>
+                }
+                <div class="header-meta">
+                    <span class="meta-item"><strong>Version:</strong> @assemblyInfo.Version</span>
+                    @if (!string.IsNullOrEmpty(assemblyInfo.FileVersion) && assemblyInfo.FileVersion != assemblyInfo.Version)
+                    {
+                        <span class="meta-item"><strong>File:</strong> @assemblyInfo.FileVersion</span>
+                    }
+                    @if (!string.IsNullOrEmpty(assemblyInfo.InformationalVersion) && 
+                         assemblyInfo.InformationalVersion != assemblyInfo.Version &&
+                         assemblyInfo.InformationalVersion != assemblyInfo.FileVersion)
+                    {
+                        <span class="meta-item"><strong>Info:</strong> @TruncateVersion(assemblyInfo.InformationalVersion)</span>
+                    }
+                    <span class="meta-item"><strong>Culture:</strong> @(string.IsNullOrEmpty(assemblyInfo.Culture) ? "neutral" : assemblyInfo.Culture)</span>
+                    @if (!string.IsNullOrEmpty(assemblyInfo.PublicKeyToken))
+                    {
+                        <span class="meta-item"><strong>Token:</strong> @assemblyInfo.PublicKeyToken</span>
+                    }
+                </div>
+                <div class="header-meta">
+                    @if (!string.IsNullOrEmpty(assemblyInfo.TargetFramework))
+                    {
+                        <span class="meta-item"><strong>Framework:</strong> @FormatFramework(assemblyInfo.TargetFramework)</span>
+                    }
+                    @if (!string.IsNullOrEmpty(assemblyInfo.Architecture))
+                    {
+                        <span class="meta-item"><strong>Arch:</strong> @assemblyInfo.Architecture</span>
+                    }
+                    @if (!string.IsNullOrEmpty(assemblyInfo.Subsystem))
+                    {
+                        <span class="meta-item"><strong>Subsystem:</strong> @assemblyInfo.Subsystem</span>
+                    }
+                    @if (!string.IsNullOrEmpty(assemblyInfo.RuntimeVersion))
+                    {
+                        <span class="meta-item"><strong>Runtime:</strong> @assemblyInfo.RuntimeVersion</span>
+                    }
+                </div>
+                <div class="header-meta">
+                    <span class="meta-item"><strong>Types:</strong> @assemblyInfo.Types.Count</span>
+                    <span class="meta-item"><strong>References:</strong> @assemblyInfo.References.Count</span>
+                    @if (!string.IsNullOrEmpty(assemblyInfo.Company))
+                    {
+                        <span class="meta-item"><strong>Company:</strong> @assemblyInfo.Company</span>
+                    }
+                    @if (!string.IsNullOrEmpty(assemblyInfo.Copyright))
+                    {
+                        <span class="meta-item"><strong>©</strong> @assemblyInfo.Copyright.Replace("Copyright", "").Replace("©", "").Trim()</span>
+                    }
+                </div>
+                @if (hasSymbols)
+                {
+                    <div class="header-meta pdb-info">
+                        <span class="meta-item text-success"><strong>Symbols:</strong> @pdbFileName</span>
+                        @if (assemblyInfo.SourceFilesCount > 0)
+                        {
+                            <span class="meta-item"><strong>Source Files:</strong> @assemblyInfo.SourceFilesCount</span>
+                        }
+                        @if (!string.IsNullOrEmpty(assemblyInfo.PdbGuid))
+                        {
+                            <span class="meta-item"><strong>PDB ID:</strong> @assemblyInfo.PdbGuid[..8]...</span>
+                        }
+                    </div>
+                }
+            </div>
+            <div class="header-actions">
+                @if (!hasSymbols)
+                {
+                    <div class="pdb-drop-zone @pdbDragClass"
+                         @ondrop="HandlePdbDrop"
+                         @ondragenter="HandlePdbDragEnter"
+                         @ondragenter:preventDefault
+                         @ondragleave="HandlePdbDragLeave"
+                         @ondragover="HandlePdbDragOver"
+                         @ondragover:preventDefault
+                         @onclick="TriggerPdbFileInput">
+                        <InputFile @ref="pdbInputFile" id="pdbFileInput" OnChange="HandlePdbFileSelected" accept=".pdb,.snupkg" style="display:none;" />
+                        <span class="pdb-drop-text">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-file-earmark-code me-1" viewBox="0 0 16 16">
+                                <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z"/>
+                                <path d="M8.646 6.646a.5.5 0 0 1 .708 0l2 2a.5.5 0 0 1 0 .708l-2 2a.5.5 0 0 1-.708-.708L10.293 9 8.646 7.354a.5.5 0 0 1 0-.708m-1.292 0a.5.5 0 0 0-.708 0l-2 2a.5.5 0 0 0 0 .708l2 2a.5.5 0 0 0 .708-.708L5.707 9l1.647-1.646a.5.5 0 0 0 0-.708"/>
+                            </svg>
+                            Drop PDB here
+                        </span>
+                    </div>
+                }
+                <button class="btn btn-outline-primary btn-sm" @onclick="Reset">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-arrow-left me-1" viewBox="0 0 16 16">
+                        <path fill-rule="evenodd" d="M15 8a.5.5 0 0 0-.5-.5H2.707l3.147-3.146a.5.5 0 1 0-.708-.708l-4 4a.5.5 0 0 0 0 .708l4 4a.5.5 0 0 0 .708-.708L2.707 8.5H14.5A.5.5 0 0 0 15 8"/>
+                    </svg>
+                    New Analysis
+                </button>
+            </div>
+        </div>
+        
+        @if (!string.IsNullOrEmpty(pdbError))
+        {
+            <div class="alert alert-warning alert-dismissible fade show mx-2 mt-2 mb-0" role="alert">
+                <strong>PDB Error:</strong> @pdbError
+                <button type="button" class="btn-close" @onclick="() => pdbError = null"></button>
+            </div>
+        }
+
+        <!-- Main Content: Tree + Details -->
+        <div class="assembly-content">
+            <!-- Tree View -->
+            <div class="tree-panel">
+                <div class="tree-header">
+                    <input type="text" class="form-control form-control-sm" placeholder="Search..." @bind="searchFilter" @bind:event="oninput" />
+                </div>
+                <div class="tree-content">
+                    <!-- References Node -->
+                    @if (assemblyInfo.References.Any())
+                    {
+                        <div class="tree-node">
+                            <div class="tree-item @(selectedNode == "references" ? "selected" : "")" @onclick="SelectReferences">
+                                <span class="tree-icon" @onclick:stopPropagation @onclick="@(() => ToggleNode("references"))">
+                                    @(IsExpanded("references") ? "▼" : "▶")
+                                </span>
+                                <span class="node-icon">📦</span>
+                                <span>References (@assemblyInfo.References.Count)</span>
+                            </div>
+                            @if (IsExpanded("references"))
+                            {
+                                <div class="tree-children">
+                                    @foreach (var reference in assemblyInfo.References)
+                                    {
+                                        <div class="tree-item leaf @(selectedReference == reference ? "selected" : "")" 
+                                             @onclick="() => SelectReference(reference)">
+                                            <span class="node-icon">📄</span>
+                                            <span class="reference-name">@GetReferenceName(reference)</span>
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+
+                    <!-- Namespaces -->
+                    @foreach (var ns in GetFilteredNamespaces())
+                    {
+                        <div class="tree-node">
+                            <div class="tree-item @(selectedNode == ns ? "selected" : "")" @onclick="@(() => SelectNamespace(ns))">
+                                <span class="tree-icon" @onclick:stopPropagation @onclick="@(() => ToggleNode(ns))">
+                                    @(IsExpanded(ns) ? "▼" : "▶")
+                                </span>
+                                <span class="node-icon">📁</span>
+                                <span>@ns</span>
+                            </div>
+                            @if (IsExpanded(ns))
+                            {
+                                <div class="tree-children">
+                                    @foreach (var type in GetTypesInNamespace(ns))
+                                    {
+                                        <div class="tree-node">
+                                            <div class="tree-item @(selectedType == type ? "selected" : "")" @onclick="@(() => SelectType(type))">
+                                                @if (type.Methods.Any() || type.Properties.Any())
+                                                {
+                                                    <span class="tree-icon" @onclick:stopPropagation @onclick="@(() => ToggleNode(type.FullName))">
+                                                        @(IsExpanded(type.FullName) ? "▼" : "▶")
+                                                    </span>
+                                                }
+                                                else
+                                                {
+                                                    <span class="tree-icon-spacer"></span>
+                                                }
+                                                <span class="node-icon">@GetTypeIcon(type)</span>
+                                                <span class="type-name">@type.Name</span>
+                                                @if (type.IsPublic) { <span class="badge bg-secondary badge-sm">pub</span> }
+                                            </div>
+                                            @if (IsExpanded(type.FullName))
+                                            {
+                                                <div class="tree-children">
+                                                    @if (type.Properties.Any())
+                                                    {
+                                                        <div class="tree-node">
+                                                            <div class="tree-item" @onclick="@(() => ToggleNode(type.FullName + ".Properties"))">
+                                                                <span class="tree-icon">
+                                                                    @(IsExpanded(type.FullName + ".Properties") ? "▼" : "▶")
+                                                                </span>
+                                                                <span class="node-icon">🔧</span>
+                                                                <span>Properties (@type.Properties.Count)</span>
+                                                            </div>
+                                                            @if (IsExpanded(type.FullName + ".Properties"))
+                                                            {
+                                                                <div class="tree-children">
+                                                                    @foreach (var prop in type.Properties)
+                                                                    {
+                                                                        <div class="tree-item leaf @(selectedMember == $"{type.FullName}.{prop.Name}" ? "selected" : "")"
+                                                                             @onclick="() => SelectProperty(type, prop)">
+                                                                            <span class="prop-accessors">
+                                                                                <span class="accessor-get @(prop.HasGetter ? "active" : "")">g</span>
+                                                                                <span class="accessor-set @(prop.HasSetter ? "active" : "")">s</span>
+                                                                            </span>
+                                                                            <span class="prop-type">@prop.Type</span>
+                                                                            <span class="prop-name">@prop.Name</span>
+                                                                            @if (prop.IsStatic) { <span class="badge bg-info badge-sm">static</span> }
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                    @if (type.Methods.Any())
+                                                    {
+                                                        <div class="tree-node">
+                                                            <div class="tree-item" @onclick="@(() => ToggleNode(type.FullName + ".Methods"))">
+                                                                <span class="tree-icon">
+                                                                    @(IsExpanded(type.FullName + ".Methods") ? "▼" : "▶")
+                                                                </span>
+                                                                <span class="node-icon">⚡</span>
+                                                                <span>Methods (@type.Methods.Count)</span>
+                                                            </div>
+                                                            @if (IsExpanded(type.FullName + ".Methods"))
+                                                            {
+                                                                <div class="tree-children">
+                                                                    @foreach (var method in type.Methods)
+                                                                    {
+                                                                        <div class="tree-item leaf @(selectedMember == $"{type.FullName}.{method.Name}" ? "selected" : "")"
+                                                                             @onclick="() => SelectMethod(type, method)">
+                                                                            <span class="node-icon">@(method.IsPublic ? "🟢" : "🔴")</span>
+                                                                            <span class="method-return-type">@method.ReturnType</span>
+                                                                            <span class="method-signature">@method.GetShortSignature()</span>
+                                                                            @if (method.IsAsync) { <span class="badge bg-purple badge-sm">async</span> }
+                                                                            @if (method.IsStatic) { <span class="badge bg-info badge-sm">static</span> }
+                                                                        </div>
+                                                                    }
+                                                                </div>
+                                                            }
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <!-- Details Panel -->
+            <div class="details-panel">
+                @if (selectedType != null)
+                {
+                    <div class="details-content">
+                        <div class="details-header">
+                            <h5>
+                                @GetTypeIcon(selectedType)
+                                @selectedType.FullName
+                            </h5>
+                            <div class="type-badges">
+                                @if (selectedType.IsPublic) { <span class="badge bg-secondary">Public</span> }
+                                @if (selectedType.IsClass) { <span class="badge bg-success">Class</span> }
+                                @if (selectedType.IsInterface) { <span class="badge bg-info">Interface</span> }
+                                @if (selectedType.IsAbstract && !selectedType.IsInterface) { <span class="badge bg-warning">Abstract</span> }
+                                @if (selectedType.IsSealed) { <span class="badge bg-dark">Sealed</span> }
+                            </div>
+                            @if (!string.IsNullOrEmpty(selectedType.SourceFile))
+                            {
+                                <div class="source-file-info mt-2">
+                                    <small class="text-muted">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" class="bi bi-file-code me-1" viewBox="0 0 16 16">
+                                            <path d="M6.646 5.646a.5.5 0 1 1 .708.708L5.707 8l1.647 1.646a.5.5 0 0 1-.708.708l-2-2a.5.5 0 0 1 0-.708zm2.708 0a.5.5 0 1 0-.708.708L10.293 8 8.646 9.646a.5.5 0 0 1 .708.708l2-2a.5.5 0 0 0 0-.708z"/>
+                                            <path d="M2 2a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2zm10-1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V2a1 1 0 0 0-1-1"/>
+                                        </svg>
+                                        @selectedType.SourceFile
+                                    </small>
+                                </div>
+                            }
+                        </div>
+                        
+                        @if (selectedType.Properties.Any())
+                        {
+                            <div class="details-section">
+                                <h6>Properties (@selectedType.Properties.Count)</h6>
+                                <ul class="member-list">
+                                    @foreach (var prop in selectedType.Properties)
+                                    {
+                                        <li class="property-item">
+                                            <span class="prop-accessors-detail">
+                                                <span class="accessor-get @(prop.HasGetter ? "active" : "")">get</span>
+                                                <span class="accessor-set @(prop.HasSetter ? "active" : "")">set</span>
+                                            </span>
+                                            <span class="prop-visibility">@(prop.IsPublic ? "public" : "private")</span>
+                                            @if (prop.IsStatic) { <span class="method-modifier">static</span> }
+                                            <span class="prop-type-detail">@prop.Type</span>
+                                            <span class="prop-name-detail">@prop.Name</span>
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+
+                        @if (selectedType.Methods.Any())
+                        {
+                            <div class="details-section">
+                                <h6>Methods (@selectedType.Methods.Count)</h6>
+                                <ul class="member-list">
+                                    @foreach (var method in selectedType.Methods)
+                                    {
+                                        <li class="method-item">
+                                            <div class="method-signature-line">
+                                                <span class="method-visibility">@(method.IsPublic ? "public" : "private")</span>
+                                                @if (method.IsStatic) { <span class="method-modifier">static</span> }
+                                                @if (method.IsAbstract) { <span class="method-modifier">abstract</span> }
+                                                @if (method.IsVirtual && !method.IsAbstract) { <span class="method-modifier">virtual</span> }
+                                                @if (method.IsAsync) { <span class="method-modifier async">async</span> }
+                                                <span class="method-return-type-detail">@method.ReturnType</span>
+                                                <span class="method-name">@method.Name</span>(<span class="method-params">@FormatParameters(method.Parameters)</span>)
+                                            </div>
+                                            @if (!string.IsNullOrEmpty(method.SourceFile))
+                                            {
+                                                <div class="method-source text-muted">
+                                                    📄 @Path.GetFileName(method.SourceFile)@(method.LineNumber > 0 ? $":{method.LineNumber}" : "")
+                                                </div>
+                                            }
+                                        </li>
+                                    }
+                                </ul>
+                            </div>
+                        }
+                    </div>
+                }
+                else if (selectedNode == "references")
+                {
+                    <div class="details-content">
+                        <div class="details-header">
+                            <h5>📦 Assembly References</h5>
+                        </div>
+                        <div class="details-section">
+                            <ul class="member-list">
+                                @foreach (var reference in assemblyInfo.References)
+                                {
+                                    <li>@reference</li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+                else if (!string.IsNullOrEmpty(selectedNode))
+                {
+                    <div class="details-content">
+                        <div class="details-header">
+                            <h5>📁 @selectedNode</h5>
+                        </div>
+                        <div class="details-section">
+                            <h6>Types in this namespace (@GetTypesInNamespace(selectedNode).Count())</h6>
+                            <ul class="member-list">
+                                @foreach (var type in GetTypesInNamespace(selectedNode))
+                                {
+                                    <li>
+                                        @GetTypeIcon(type) @type.Name
+                                        @if (type.IsPublic) { <span class="badge bg-secondary badge-sm">public</span> }
+                                    </li>
+                                }
+                            </ul>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <div class="details-placeholder">
+                        <p class="text-muted">Select an item from the tree to view details</p>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private AssemblyInfo? assemblyInfo;
+    private byte[]? dllBytes;
+    private string dragClass = "";
+    private InputFile? inputFile;
+    private ElementReference dropZoneElement;
+    private bool isInitialized = false;
+    private bool hasSymbols = false;
+    private string pdbDragClass = "";
+    private string pdbFileName = "";
+    private string? pdbError;
+    private InputFile? pdbInputFile;
+
+    // Tree state
+    private HashSet<string> expandedNodes = new();
+    private string? selectedNode;
+    private TypeInfo? selectedType;
+    private string? selectedReference;
+    private string? selectedMember;
+    private string searchFilter = "";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender || (!isInitialized && assemblyInfo == null))
+        {
+            try
+            {
+                await JS.InvokeVoidAsync("initializeDropZone", dropZoneElement, inputFile?.Element);
+                isInitialized = true;
+            }
+            catch
+            {
+                // Element might not be ready yet
+            }
+        }
+    }
+
+    private void HandleDragEnter(DragEventArgs e) => dragClass = "drag-over";
+    private void HandleDragLeave(DragEventArgs e) => dragClass = "";
+    private void HandleDragOver(DragEventArgs e) => dragClass = "drag-over";
+
+    private void HandlePdbDragEnter(DragEventArgs e) => pdbDragClass = "pdb-drag-over";
+    private void HandlePdbDragLeave(DragEventArgs e) => pdbDragClass = "";
+    private void HandlePdbDragOver(DragEventArgs e) => pdbDragClass = "pdb-drag-over";
+
+    private async Task HandlePdbDrop(DragEventArgs e)
+    {
+        pdbDragClass = "";
+        // The actual file handling happens through HandlePdbFileSelected
+    }
+
+    private async Task TriggerPdbFileInput()
+    {
+        if (pdbInputFile?.Element != null)
+        {
+            await JS.InvokeVoidAsync("triggerFileInput", pdbInputFile.Element);
+        }
+    }
+
+    private async Task HandlePdbFileSelected(InputFileChangeEventArgs e)
+    {
+        if (assemblyInfo == null || dllBytes == null) return;
+
+        foreach (var file in e.GetMultipleFiles(1))
+        {
+            var fileName = file.Name.ToLowerInvariant();
+            
+            if (fileName.EndsWith(".pdb") || fileName.EndsWith(".snupkg"))
+            {
+                try
+                {
+                    using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                    using var memoryStream = new MemoryStream();
+                    await stream.CopyToAsync(memoryStream);
+                    var pdbBytes = memoryStream.ToArray();
+                    
+                    var result = Analyzer.EnhanceWithPdbInfo(assemblyInfo, dllBytes, pdbBytes);
+                    if (result.Success)
+                    {
+                        hasSymbols = true;
+                        pdbFileName = file.Name;
+                        pdbError = null;
+                    }
+                    else
+                    {
+                        pdbError = result.Error;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    pdbError = $"Error loading PDB: {ex.Message}";
+                }
+            }
+            else
+            {
+                pdbError = "Please select a .pdb or .snupkg file";
+            }
+        }
+    }
+
+    private async Task TriggerFileInput()
+    {
+        if (inputFile?.Element != null)
+        {
+            await JS.InvokeVoidAsync("triggerFileInput", inputFile.Element);
+        }
+    }
+
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            var fileName = file.Name.ToLowerInvariant();
+            
+            if (fileName.EndsWith(".dll") || fileName.EndsWith(".exe"))
+            {
+                try
+                {
+                    using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                    using var memoryStream = new MemoryStream();
+                    await stream.CopyToAsync(memoryStream);
+                    var buffer = memoryStream.ToArray();
+                    
+                    dllBytes = buffer;
+                    assemblyInfo = Analyzer.AnalyzeAssembly(buffer);
+                    hasSymbols = false;
+                    pdbFileName = "";
+                    pdbError = null;
+                }
+                catch (Exception ex)
+                {
+                    assemblyInfo = new AssemblyInfo { Error = $"Error reading file: {ex.Message}" };
+                }
+            }
+            else if (fileName.EndsWith(".pdb") || fileName.EndsWith(".snupkg"))
+            {
+                // Handle symbol files - if we already have assembly info, enhance it
+                if (assemblyInfo != null && dllBytes != null)
+                {
+                    try
+                    {
+                        using var stream = file.OpenReadStream(maxAllowedSize: 50 * 1024 * 1024);
+                        using var memoryStream = new MemoryStream();
+                        await stream.CopyToAsync(memoryStream);
+                        var pdbBytes = memoryStream.ToArray();
+                        
+                        var result = Analyzer.EnhanceWithPdbInfo(assemblyInfo, dllBytes, pdbBytes);
+                        if (result.Success)
+                        {
+                            hasSymbols = true;
+                            pdbFileName = file.Name;
+                            pdbError = null;
+                        }
+                        else
+                        {
+                            pdbError = result.Error;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        pdbError = $"Error loading PDB: {ex.Message}";
+                    }
+                }
+            }
+        }
+    }
+
+    private void Reset()
+    {
+        assemblyInfo = null;
+        dllBytes = null;
+        isInitialized = false;
+        hasSymbols = false;
+        pdbFileName = "";
+        pdbError = null;
+        expandedNodes.Clear();
+        selectedNode = null;
+        selectedType = null;
+        selectedReference = null;
+        selectedMember = null;
+        searchFilter = "";
+    }
+
+    // Tree helpers
+    private bool IsExpanded(string nodeId) => expandedNodes.Contains(nodeId);
+    
+    private void ToggleNode(string nodeId)
+    {
+        if (expandedNodes.Contains(nodeId))
+            expandedNodes.Remove(nodeId);
+        else
+            expandedNodes.Add(nodeId);
+    }
+
+    private IEnumerable<string> GetFilteredNamespaces()
+    {
+        var namespaces = assemblyInfo?.Types
+            .Where(t => !string.IsNullOrEmpty(t.Namespace))
+            .Select(t => t.Namespace)
+            .Distinct()
+            .OrderBy(n => n) ?? Enumerable.Empty<string>();
+
+        if (!string.IsNullOrWhiteSpace(searchFilter))
+        {
+            namespaces = namespaces.Where(n => 
+                n.Contains(searchFilter, StringComparison.OrdinalIgnoreCase) ||
+                GetTypesInNamespace(n).Any(t => t.Name.Contains(searchFilter, StringComparison.OrdinalIgnoreCase)));
+        }
+
+        return namespaces;
+    }
+
+    private IEnumerable<TypeInfo> GetTypesInNamespace(string ns)
+    {
+        var types = assemblyInfo?.Types
+            .Where(t => t.Namespace == ns)
+            .OrderBy(t => t.Name) ?? Enumerable.Empty<TypeInfo>();
+
+        if (!string.IsNullOrWhiteSpace(searchFilter))
+        {
+            types = types.Where(t => 
+                t.Name.Contains(searchFilter, StringComparison.OrdinalIgnoreCase) ||
+                t.FullName.Contains(searchFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return types;
+    }
+
+    private string GetReferenceName(string reference)
+    {
+        var parts = reference.Split(',');
+        return parts.Length > 0 ? parts[0] : reference;
+    }
+
+    private string GetTypeIcon(TypeInfo type)
+    {
+        if (type.IsInterface) return "🔷";
+        if (type.IsAbstract) return "🔶";
+        if (type.IsSealed) return "🔒";
+        return "🟦";
+    }
+
+    private void SelectReferences()
+    {
+        selectedNode = "references";
+        selectedType = null;
+        selectedReference = null;
+        selectedMember = null;
+    }
+
+    private void SelectReference(string reference)
+    {
+        selectedReference = reference;
+        selectedNode = "references";
+        selectedType = null;
+        selectedMember = null;
+    }
+
+    private void SelectNamespace(string ns)
+    {
+        selectedNode = ns;
+        selectedType = null;
+        selectedReference = null;
+        selectedMember = null;
+        if (!expandedNodes.Contains(ns))
+            expandedNodes.Add(ns);
+    }
+
+    private void SelectType(TypeInfo type)
+    {
+        selectedType = type;
+        selectedNode = type.Namespace;
+        selectedReference = null;
+        selectedMember = null;
+    }
+
+    private void SelectProperty(TypeInfo type, PropertyInfo prop)
+    {
+        selectedType = type;
+        selectedMember = $"{type.FullName}.{prop.Name}";
+        selectedNode = type.Namespace;
+        selectedReference = null;
+    }
+
+    private void SelectMethod(TypeInfo type, MethodInfo method)
+    {
+        selectedType = type;
+        selectedMember = $"{type.FullName}.{method.Name}";
+        selectedNode = type.Namespace;
+        selectedReference = null;
+    }
+
+    private string FormatParameters(List<ParameterInfo> parameters)
+    {
+        if (parameters == null || !parameters.Any())
+            return "";
+        return string.Join(", ", parameters.Select(p => $"{p.Type} {p.Name}"));
+    }
+
+    private string TruncateVersion(string? version)
+    {
+        if (string.IsNullOrEmpty(version))
+            return string.Empty;
+        
+        // If version contains a '+' (semantic version with commit hash), truncate after it
+        var plusIndex = version.IndexOf('+');
+        if (plusIndex > 0 && version.Length > plusIndex + 8)
+        {
+            return version.Substring(0, plusIndex + 9) + "...";
+        }
+        
+        // If version is very long, truncate it
+        if (version.Length > 40)
+        {
+            return version.Substring(0, 37) + "...";
+        }
+        
+        return version;
+    }
+
+    private string FormatFramework(string? framework)
+    {
+        if (string.IsNullOrEmpty(framework))
+            return string.Empty;
+        
+        // Convert ".NETCoreApp,Version=v8.0" to "net8.0"
+        if (framework.StartsWith(".NETCoreApp,Version=v"))
+        {
+            return "net" + framework.Substring(".NETCoreApp,Version=v".Length);
+        }
+        
+        // Convert ".NETFramework,Version=v4.8" to "net48"
+        if (framework.StartsWith(".NETFramework,Version=v"))
+        {
+            var version = framework.Substring(".NETFramework,Version=v".Length);
+            return "net" + version.Replace(".", "");
+        }
+        
+        // Convert ".NETStandard,Version=v2.0" to "netstandard2.0"
+        if (framework.StartsWith(".NETStandard,Version=v"))
+        {
+            return "netstandard" + framework.Substring(".NETStandard,Version=v".Length);
+        }
+        
+        return framework;
+    }
+}
