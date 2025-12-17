@@ -35,8 +35,7 @@ jobs:
       - name: Publish
         run: dotnet publish PanoramicData.WhatTheDll/PanoramicData.WhatTheDll.csproj -c Release -o publish
 
-      - name: Change base href
-        run: sed -i 's|<base href="/" />|<base href="/PanoramicData.WhatTheDll/" />|g' publish/wwwroot/index.html
+      # Base href stays as "/" for custom domain (whatthedll.panoramicdata.com)
 
       - name: Add .nojekyll file
         run: touch publish/wwwroot/.nojekyll
