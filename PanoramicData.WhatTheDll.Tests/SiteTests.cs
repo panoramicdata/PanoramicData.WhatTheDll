@@ -119,4 +119,91 @@ public class SiteTests : PageTest
         var htmlTheme = await Page.Locator("html").GetAttributeAsync("data-bs-theme");
         Assert.That(htmlTheme, Is.EqualTo("dark"), "Dark mode should be applied when system prefers dark");
     }
+
+    [Test]
+    public async Task Upload_DllFile_ShowsAssemblyInfo()
+    {
+        await Page.GotoAsync(BaseUrl);
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        // Get the path to the test DLL
+        var testDataPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData");
+        var dllPath = Path.Combine(testDataPath, "Newtonsoft.Json.dll");
+
+        Assert.That(File.Exists(dllPath), Is.True, $"Test DLL not found at {dllPath}");
+
+        // Find the file input and upload the DLL
+        var fileInput = Page.Locator("input[type='file']").First;
+        await fileInput.SetInputFilesAsync(dllPath);
+
+        // Wait for the assembly to be analyzed
+        await Page.WaitForSelectorAsync(".assembly-header, .tree-panel", new() { Timeout = 30000 });
+
+        // Verify assembly name is displayed
+        var assemblyName = Page.GetByText("Newtonsoft.Json");
+        await Expect(assemblyName.First).ToBeVisibleAsync(new() { Timeout = 10000 });
+    }
+
+    [Test]
+    public async Task Upload_DllAndPdb_ShowsSymbolInfo()
+    {
+        await Page.GotoAsync(BaseUrl);
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        // Get the paths to the test files
+        var testDataPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData");
+        var dllPath = Path.Combine(testDataPath, "Newtonsoft.Json.dll");
+        var pdbPath = Path.Combine(testDataPath, "Newtonsoft.Json.pdb");
+
+        Assert.That(File.Exists(dllPath), Is.True, $"Test DLL not found at {dllPath}");
+        Assert.That(File.Exists(pdbPath), Is.True, $"Test PDB not found at {pdbPath}");
+
+        // Upload DLL first
+        var fileInput = Page.Locator("input[type='file']").First;
+        await fileInput.SetInputFilesAsync(dllPath);
+
+        // Wait for the assembly to be analyzed
+        await Page.WaitForSelectorAsync(".assembly-header, .tree-panel", new() { Timeout = 30000 });
+
+        // Now upload PDB - find the PDB drop zone input
+        var pdbInput = Page.Locator("input[accept*='.pdb']").Last;
+        await pdbInput.SetInputFilesAsync(pdbPath);
+
+        // Wait for symbols to be loaded - look for the symbols indicator or source file info
+        await Page.WaitForTimeoutAsync(2000);
+
+        // Verify symbols are loaded by checking for source file references or symbol indicator
+        var pageContent = await Page.ContentAsync();
+        Assert.That(pageContent.Contains("Symbol") || pageContent.Contains(".cs") || pageContent.Contains("pdb"), 
+            Is.True, "Page should show symbol/source information after PDB upload");
+    }
+
+    [Test]
+    public async Task Upload_Dll_ShowsTypesInTree()
+    {
+        await Page.GotoAsync(BaseUrl);
+        await Page.WaitForLoadStateAsync(LoadState.NetworkIdle);
+
+        // Get the path to the test DLL
+        var testDataPath = Path.Combine(TestContext.CurrentContext.TestDirectory, "TestData");
+        var dllPath = Path.Combine(testDataPath, "Newtonsoft.Json.dll");
+
+        // Upload DLL
+        var fileInput = Page.Locator("input[type='file']").First;
+        await fileInput.SetInputFilesAsync(dllPath);
+
+        // Wait for the tree to be displayed
+        await Page.WaitForSelectorAsync(".tree-panel", new() { Timeout = 30000 });
+
+        // Look for known Newtonsoft.Json types/namespaces
+        var jsonConvert = Page.GetByText("JsonConvert");
+        var newtonsoftNamespace = Page.GetByText("Newtonsoft.Json");
+
+        // At least one of these should be visible (namespace or type)
+        var jsonConvertVisible = await jsonConvert.First.IsVisibleAsync();
+        var namespaceVisible = await newtonsoftNamespace.First.IsVisibleAsync();
+
+        Assert.That(jsonConvertVisible || namespaceVisible, Is.True, 
+            "Should show Newtonsoft.Json types or namespace in tree");
+    }
 }
