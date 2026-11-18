@@ -73,7 +73,9 @@ public class DllAnalyzer
                 var namespaceName = metadataReader.GetString(typeDef.Namespace);
 
                 if (string.IsNullOrEmpty(namespaceName) || typeName.StartsWith("<"))
+                {
                     continue;
+                }
 
                 var fullName = string.IsNullOrEmpty(namespaceName) ? typeName : $"{namespaceName}.{typeName}";
                 
@@ -180,9 +182,13 @@ public class DllAnalyzer
 
                     // Skip compiler-generated, constructors, and property accessors
                     if (methodName.StartsWith("<") || methodName.StartsWith("."))
+                    {
                         continue;
+                    }
                     if (propertyAccessors.Contains(methodDefHandle))
+                    {
                         continue;
+                    }
 
                     var returnType = DecodeReturnType(metadataReader, methodDef);
                     var isAsync = returnType.StartsWith("Task") || returnType.StartsWith("ValueTask");
@@ -323,7 +329,9 @@ public class DllAnalyzer
             // Only include static literal fields (the actual enum values)
             if ((field.Attributes & FieldAttributes.Static) == 0 ||
                 (field.Attributes & FieldAttributes.Literal) == 0)
+            {
                 continue;
+            }
             
             // Get the constant value
             long value = 0;
@@ -384,7 +392,10 @@ public class DllAnalyzer
                 attrTypeName = metadataReader.GetString(declaringType.Name);
             }
             
-            if (attrTypeName == null) continue;
+            if (attrTypeName == null)
+            {
+                continue;
+            }
             
             var value = GetAttributeStringValue(metadataReader, attr);
             
@@ -414,7 +425,9 @@ public class DllAnalyzer
                 case "AssemblyConfigurationAttribute":
                     info.Configuration = value;
                     if (value?.ToLowerInvariant() == "debug")
+                    {
                         info.IsDebug = true;
+                    }
                     break;
                 case "DebuggableAttribute":
                     info.IsDebug = true;
@@ -428,18 +441,29 @@ public class DllAnalyzer
         try
         {
             var valueBytes = reader.GetBlobBytes(attr.Value);
-            if (valueBytes.Length < 4) return null;
+            if (valueBytes.Length < 4)
+            {
+                return null;
+            }
             
             // Custom attribute blob format: 2-byte prolog (0x0001), then values
             if (valueBytes[0] != 0x01 || valueBytes[1] != 0x00)
+            {
                 return null;
+            }
             
             // Read string length (packed unsigned integer)
             int offset = 2;
-            if (offset >= valueBytes.Length) return null;
+            if (offset >= valueBytes.Length)
+            {
+                return null;
+            }
             
             byte firstByte = valueBytes[offset];
-            if (firstByte == 0xFF) return null; // null string
+            if (firstByte == 0xFF)
+            {
+                return null; // null string
+            }
             
             int length;
             if ((firstByte & 0x80) == 0)
@@ -449,19 +473,28 @@ public class DllAnalyzer
             }
             else if ((firstByte & 0xC0) == 0x80)
             {
-                if (offset + 1 >= valueBytes.Length) return null;
+                if (offset + 1 >= valueBytes.Length)
+                {
+                    return null;
+                }
                 length = ((firstByte & 0x3F) << 8) | valueBytes[offset + 1];
                 offset += 2;
             }
             else
             {
-                if (offset + 3 >= valueBytes.Length) return null;
+                if (offset + 3 >= valueBytes.Length)
+                {
+                    return null;
+                }
                 length = ((firstByte & 0x1F) << 24) | (valueBytes[offset + 1] << 16) | 
                          (valueBytes[offset + 2] << 8) | valueBytes[offset + 3];
                 offset += 4;
             }
             
-            if (offset + length > valueBytes.Length) return null;
+            if (offset + length > valueBytes.Length)
+            {
+                return null;
+            }
             
             return System.Text.Encoding.UTF8.GetString(valueBytes, offset, length);
         }
@@ -499,7 +532,9 @@ public class DllAnalyzer
                 var methodDebugInfo = pdbReader.GetMethodDebugInformation(methodDebugInfoHandle);
                 
                 if (methodDebugInfo.Document.IsNil)
+                {
                     continue;
+                }
 
                 var document = pdbReader.GetDocument(methodDebugInfo.Document);
                 var sourceFile = pdbReader.GetString(document.Name);
